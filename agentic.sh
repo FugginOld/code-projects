@@ -246,7 +246,6 @@ apt-get install -y -qq nodejs
 echo "    Node.js $(node --version) / npm $(npm --version)"
 
 echo ">>> Installing global npm packages..."
-npm install -g npm@latest
 npm install -g typescript ts-node eslint prettier
 
 echo ">>> Installing Go..."
