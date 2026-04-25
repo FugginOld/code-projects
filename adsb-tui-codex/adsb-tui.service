@@ -1,0 +1,22 @@
+[Unit]
+Description=ADS-B TUI Dashboard
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/adsb-tui
+Environment=TERM=xterm-256color
+ExecStart=/usr/bin/python3 /home/pi/adsb-tui/adsb_tui.py
+Restart=always
+RestartSec=3
+StandardInput=tty
+StandardOutput=tty
+TTYPath=/dev/tty1
+TTYReset=yes
+TTYVHangup=yes
+TTYVTDisallocate=yes
+
+[Install]
+WantedBy=multi-user.target

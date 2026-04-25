@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -m pytest tests/ -v)",
+      "Bash(python -c \"import ast; ast.parse\\(open\\('adsb_tui.py'\\).read\\(\\)\\); print\\('adsb_tui.py OK'\\)\")",
+      "Bash(python -c \"import ast; ast.parse\\(open\\('autotune.py'\\).read\\(\\)\\); print\\('autotune.py OK'\\)\")",
+      "Bash(python -m pytest tests/ -q)"
+    ]
+  }
+}
