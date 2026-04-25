@@ -340,7 +340,7 @@ cat > /project/CLAUDE.md << 'CLAUDEMD'
 - **Languages**: Node.js 22 LTS, Python 3.12, Go (latest), Rust (latest)
 - **Package managers**: npm, pip (use --break-system-packages), cargo, go install
 - **Docker**: Docker Engine + Compose plugin, running and ready
-- **Containers**: Watchtower (auto-updates), Code Server (port 8443)
+- **Containers**: Dockwatch (auto-updates), Code Server (port 8443)
 - **Search tools**: ripgrep (rg), fd-find (fdfind), fzf
 - **Databases**: PostgreSQL client (psql), Redis client (redis-cli), SQLite3
 
@@ -359,7 +359,7 @@ from claude.ai/code or the Claude mobile app. Use /remote-control or press space
 
 ## Docker Usage
 Docker compose files should go in /docker/<service-name>/docker-compose.yml. 
-Watchtower is already running and will auto-update any containers with `restart: unless-stopped`.
+Dockwatch is already running and will auto-update any containers with `restart: unless-stopped`.
 All Docker containers in this LXC need `security_opt: [apparmor=unconfined]`.
 
 ## Conventions
@@ -436,18 +436,18 @@ git config --global core.editor nano
 git config --global pull.rebase false
 
 echo ">>> Setting up Docker services..."
-mkdir -p /docker/watchtower
-cat > /docker/watchtower/docker-compose.yml << 'DCOMPOSE'
+mkdir -p /docker/dockwatch
+cat > /docker/dockwatch/docker-compose.yml << 'DCOMPOSE'
 services:
-  watchtower:
-    image: containrrr/watchtower
-    container_name: watchtower
+  dockwatch:
+    image: fugginold/dockwatch:latest
+    container_name: dockwatch
     restart: unless-stopped
     environment:
       TZ: America/New_York
-      WATCHTOWER_CLEANUP: "true"
-      WATCHTOWER_INCLUDE_STOPPED: "true"
-      WATCHTOWER_SCHEDULE: "0 0 4 * * *"
+      DOCKWATCH_CLEANUP: "true"
+      DOCKWATCH_INCLUDE_STOPPED: "true"
+      DOCKWATCH_SCHEDULE: "0 0 4 * * *"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     security_opt:
@@ -475,7 +475,7 @@ services:
       - apparmor=unconfined
 DCOMPOSE2
 
-cd /docker/watchtower && docker compose up -d
+cd /docker/dockwatch && docker compose up -d
 cd /docker/code-server && docker compose up -d
 
 echo ">>> Setting up auto-update cron..."
@@ -545,7 +545,7 @@ print_summary() {
   echo "    • Python 3 + pip + venv   • Go (latest)"
   echo "    • Rust (via rustup)       • Docker + Compose"
   echo "    • Git, ripgrep, fzf, fd   • Build essentials"
-  echo "    • PostgreSQL & Redis CLI  • Watchtower (auto-update containers)"
+  echo "    • PostgreSQL & Redis CLI  • Dockwatch (auto-update containers)"
   echo "    • Code Server (port 8443)"
   echo ""
   echo -e "  ${BOLD}Permissions:${NC}  All tools pre-approved (no prompts)"
