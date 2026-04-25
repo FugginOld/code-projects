@@ -440,7 +440,7 @@ mkdir -p /docker/dockwatch
 cat > /docker/dockwatch/docker-compose.yml << 'DCOMPOSE'
 services:
   dockwatch:
-    image: fugginold/dockwatch:latest
+    image: fugginold/dockwatch:v0.3.32
     container_name: dockwatch
     restart: unless-stopped
     environment:
