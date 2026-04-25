@@ -4,7 +4,7 @@
 #  Creates a fully provisioned Ubuntu 24.04 LXC container ready for Claude Code
 #
 #  Run on your Proxmox host:
-#    curl -fsSL https://raw.githubusercontent.com/FugginOld/code-projects/claude-proxmo-agentic/main/agentic.sh -o /tmp/agentic.sh && bash /tmp/agentic.sh
+#    curl -fsSL https://raw.githubusercontent.com/FugginOld/code-projects/claude-proxmox-agentic/main/agentic.sh -o /tmp/agentic.sh && bash /tmp/agentic.sh
 #
 #  GitHub: https://github.com/FugginOld/code-projects/claude-proxmox-agentic
 # ============================================================================
