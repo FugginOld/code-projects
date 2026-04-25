@@ -9,6 +9,7 @@
 #  GitHub: https://github.com/FugginOld/code-updated
 # ============================================================================
 set -euo pipefail
+trap 'rm -f "/tmp/provision-${CT_ID:-}.sh"' EXIT
 
 # ── Colors & Helpers ────────────────────────────────────────────────────────
 RED='\033[0;31m'
@@ -44,8 +45,9 @@ get_config() {
   local next_id
   next_id=$(pvesh get /cluster/nextid 2>/dev/null || echo "100")
 
-  # Template
-  TEMPLATE="ubuntu-24.04-standard_24.04-2_amd64.tar.zst"
+  # Template — query from Proxmox; fall back to known version
+  TEMPLATE=$(pveam available --section system 2>/dev/null | awk '/ubuntu-24.04-standard/ {print $2; exit}')
+  [[ -n "$TEMPLATE" ]] || TEMPLATE="ubuntu-24.04-standard_24.04-2_amd64.tar.zst"
 
   echo -e "${BOLD}Container Configuration${NC}"
   echo "─────────────────────────────────────────────────"
@@ -58,9 +60,15 @@ get_config() {
   read -rp "Hostname [claude-code]: " CT_HOSTNAME
   CT_HOSTNAME="${CT_HOSTNAME:-claude-code}"
 
+  read -rp "Timezone [America/New_York]: " CT_TZ
+  CT_TZ="${CT_TZ:-America/New_York}"
+
   read -rsp "Root password: " CT_PASSWORD
   echo ""
+  read -rsp "Confirm password: " CT_PASSWORD_CONFIRM
+  echo ""
   [[ -n "$CT_PASSWORD" ]] || error "Password cannot be empty."
+  [[ "$CT_PASSWORD" == "$CT_PASSWORD_CONFIRM" ]] || error "Passwords do not match."
 
   read -rp "CPU cores [4]: " CT_CORES
   CT_CORES="${CT_CORES:-4}"
@@ -78,6 +86,7 @@ get_config() {
   [[ -z "$DEFAULT_STORAGE" ]] && DEFAULT_STORAGE="local-lvm"
   read -rp "Storage [$DEFAULT_STORAGE]: " CT_STORAGE
   CT_STORAGE="${CT_STORAGE:-$DEFAULT_STORAGE}"
+  pvesm status "$CT_STORAGE" &>/dev/null || error "Storage '$CT_STORAGE' not found."
 
   # Network - default DHCP
   read -rp "IP address (DHCP or x.x.x.x/xx) [dhcp]: " CT_IP
@@ -91,6 +100,13 @@ get_config() {
   read -rp "DNS server [1.1.1.1]: " CT_DNS
   CT_DNS="${CT_DNS:-1.1.1.1}"
 
+  # Code Server password (auto-generate a secure default)
+  local default_cs_pass
+  default_cs_pass=$(openssl rand -base64 9 2>/dev/null || printf 'changeme')
+  read -rsp "Code Server password [$default_cs_pass]: " CT_CODESERVER_PASS
+  echo ""
+  CT_CODESERVER_PASS="${CT_CODESERVER_PASS:-$default_cs_pass}"
+
   # SSH key (optional)
   read -rp "Path to SSH public key (optional, press Enter to skip): " CT_SSH_KEY
 
@@ -99,6 +115,7 @@ get_config() {
   echo "─────────────────────────────────────────────────"
   echo "  CT ID:      $CT_ID"
   echo "  Hostname:   $CT_HOSTNAME"
+  echo "  Timezone:   $CT_TZ"
   echo "  Template:   $TEMPLATE"
   echo "  CPU:        $CT_CORES cores"
   echo "  RAM:        $CT_RAM MB ($(( CT_RAM / 1024 )) GB)"
@@ -153,8 +170,8 @@ create_container() {
     --ostype ubuntu
     --unprivileged 0
     --features nesting=1,keyctl=1
-    --onboot 1
-    --start 0
+    --onboot 1     # start automatically when Proxmox host boots
+    --start 0      # don't start immediately during creation
   )
 
   # Add SSH key if provided
@@ -179,7 +196,7 @@ start_container() {
   # Wait for network connectivity
   info "Waiting for network..."
   local attempts=0
-  while ! pct exec "$CT_ID" -- ping -c1 -W2 1.1.1.1 &>/dev/null; do
+  while ! pct exec "$CT_ID" -- ping -c1 -W2 "${CT_GW:-$CT_DNS}" &>/dev/null; do
     ((attempts++))
     [[ $attempts -lt 30 ]] || error "Container failed to get network after 60s."
     sleep 2
@@ -194,12 +211,12 @@ provision_container() {
   # Write provision script to host, then push into container
   cat > /tmp/provision-${CT_ID}.sh << 'PROVISION_EOF'
 #!/bin/bash
-set -e
+set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive
 
-echo ">>> Setting timezone to America/New_York..."
-ln -sf /usr/share/zoneinfo/America/New_York /etc/localtime
-echo "America/New_York" > /etc/timezone
+echo ">>> Setting timezone to __CT_TZ__..."
+ln -sf /usr/share/zoneinfo/__CT_TZ__ /etc/localtime
+echo "__CT_TZ__" > /etc/timezone
 dpkg-reconfigure -f noninteractive tzdata
 
 echo ">>> Generating locale..."
@@ -220,7 +237,7 @@ apt-get install -y -qq \
   ca-certificates gnupg lsb-release apt-transport-https software-properties-common \
   bash-completion locales \
   htop nano vim tmux screen \
-  jq yq tree \
+  jq tree \
   net-tools iproute2 iputils-ping dnsutils \
   openssh-server \
   cron logrotate
@@ -238,6 +255,11 @@ apt-get install -y -qq \
   rsync \
   sqlite3
 
+echo ">>> Installing yq (YAML processor)..."
+YQ_ARCH=$(dpkg --print-architecture | sed 's/armhf/arm/')
+curl -fsSL "https://github.com/mikefarah/yq/releases/latest/download/yq_linux_${YQ_ARCH}" -o /usr/local/bin/yq
+chmod +x /usr/local/bin/yq
+
 echo ">>> Installing database clients..."
 apt-get install -y -qq \
   postgresql-client redis-tools
@@ -252,7 +274,8 @@ npm install -g typescript ts-node eslint prettier
 
 echo ">>> Installing Go..."
 GO_VERSION=$(curl -fsSL "https://go.dev/VERSION?m=text" | head -1)
-curl -fsSL "https://go.dev/dl/${GO_VERSION}.linux-amd64.tar.gz" -o /tmp/go.tar.gz
+GO_ARCH=$(dpkg --print-architecture | sed 's/armhf/armv6l/')
+curl -fsSL "https://go.dev/dl/${GO_VERSION}.linux-${GO_ARCH}.tar.gz" -o /tmp/go.tar.gz
 rm -rf /usr/local/go
 tar -C /usr/local -xzf /tmp/go.tar.gz
 rm /tmp/go.tar.gz
@@ -335,7 +358,7 @@ cat > /project/CLAUDE.md << 'CLAUDEMD'
 ## Environment
 - **OS**: Ubuntu 24.04 LXC container on Proxmox
 - **Working directory**: /project
-- **Timezone**: America/New_York
+- **Timezone**: __CT_TZ__
 - **User**: root
 
 ## Available Tools
@@ -415,7 +438,7 @@ cat >> /root/.bashrc << 'BASHRC'
 # ── Claude Code Container ──────────────────────────────────
 export EDITOR=nano
 export LANG=en_US.UTF-8
-export TZ=America/New_York
+export TZ=__CT_TZ__
 export PATH="$HOME/.local/bin:$HOME/.claude/bin:$HOME/.cargo/bin:/usr/local/go/bin:$PATH"
 
 # Aliases
@@ -446,7 +469,7 @@ services:
     container_name: dockwatch
     restart: unless-stopped
     environment:
-      TZ: America/New_York
+      TZ: __CT_TZ__
       DOCKWATCH_CLEANUP: "true"
       DOCKWATCH_INCLUDE_STOPPED: "true"
       DOCKWATCH_SCHEDULE: "0 0 4 * * *"
@@ -466,8 +489,8 @@ services:
     environment:
       PUID: "0"
       PGID: "0"
-      TZ: America/New_York
-      PASSWORD: admin
+      TZ: __CT_TZ__
+      PASSWORD: __CT_CODESERVER_PASS__
     volumes:
       - ./config:/config
       - /:/config/workspace
@@ -482,7 +505,7 @@ cd /docker/code-server && docker compose up -d
 
 echo ">>> Setting up auto-update cron..."
 cat > /etc/cron.d/system-update << 'CRON'
-# Weekly system update - Sunday 3:00 AM ET
+# Weekly system update - Sunday 3:00 AM __CT_TZ__
 SHELL=/bin/bash
 PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
 0 3 * * 0 root apt-get update -qq && apt-get upgrade -y -qq && apt-get autoremove -y -qq && apt-get clean -qq >> /var/log/auto-update.log 2>&1
@@ -510,6 +533,12 @@ echo "║          Provisioning Complete!                  ║"
 echo "╚══════════════════════════════════════════════════╝"
 PROVISION_EOF
 
+  # Inject host-side variables into the provision script
+  sed -i \
+    -e "s|__CT_TZ__|${CT_TZ}|g" \
+    -e "s|__CT_CODESERVER_PASS__|${CT_CODESERVER_PASS}|g" \
+    "/tmp/provision-${CT_ID}.sh"
+
   chmod +x /tmp/provision-${CT_ID}.sh
   pct push "$CT_ID" /tmp/provision-${CT_ID}.sh /tmp/provision.sh
   pct exec "$CT_ID" -- chmod +x /tmp/provision.sh
@@ -532,12 +561,12 @@ print_summary() {
   echo -e "  ${BOLD}IP:${NC}         ${ct_ip:-pending (DHCP)}"
   echo -e "  ${BOLD}Resources:${NC}  ${CT_CORES} CPU / $(( CT_RAM / 1024 )) GB RAM / ${CT_DISK} GB disk"
   echo -e "  ${BOLD}Storage:${NC}    $CT_STORAGE"
-  echo -e "  ${BOLD}Timezone:${NC}   America/New_York"
+  echo -e "  ${BOLD}Timezone:${NC}   $CT_TZ"
   echo ""
   echo -e "  ${BOLD}Connect:${NC}"
   echo -e "    Console:  ${CYAN}pct enter $CT_ID${NC}"
   [[ -n "${ct_ip:-}" ]] && echo -e "    SSH:      ${CYAN}ssh root@${ct_ip}${NC}"
-  [[ -n "${ct_ip:-}" ]] && echo -e "    Code:     ${CYAN}http://${ct_ip}:8443${NC}  (password: admin)"
+  [[ -n "${ct_ip:-}" ]] && echo -e "    Code:     ${CYAN}http://${ct_ip}:8443${NC}  (password: $CT_CODESERVER_PASS)"
   echo ""
   echo -e "  ${BOLD}Start Claude Code:${NC}"
   echo -e "    ${CYAN}claude${NC}    (shell auto-cd's to /project on login)"
@@ -555,7 +584,7 @@ print_summary() {
   echo -e "  ${BOLD}Features:${NC}    Agent teams, extended thinking, 64k output tokens, remote control"
   echo -e "  ${BOLD}Plugins:${NC}     frontend-design, code-review, commit-commands,"
   echo -e "               security-guidance, context7, webapp-testing, superpowers"
-  echo -e "  ${BOLD}Auto-updates:${NC} Sundays 3 AM ET (system) / Daily 4 AM ET (Docker)"
+  echo -e "  ${BOLD}Auto-updates:${NC} Sundays 3 AM $CT_TZ (system) / Daily 4 AM $CT_TZ (Docker)"
   echo ""
 }
 
