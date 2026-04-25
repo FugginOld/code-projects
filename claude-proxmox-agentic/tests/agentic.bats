@@ -10,23 +10,28 @@ SCRIPT="${BATS_TEST_DIRNAME}/../agentic.sh"
 
 # ── One-time setup ────────────────────────────────────────────────────────────
 
-# create_container() writes to /etc/pve/lxc/<CT_ID>.conf — the path is
-# hardcoded in the script.  We need the directory to exist and be writable.
+# create_container() appends an AppArmor line to /etc/pve/lxc/<CT_ID>.conf.
+# That path is hardcoded in the production script and is specific to Proxmox.
+# These tests MUST run on a non-production, isolated test host.
+# setup_file creates the directory (if absent) and makes the current user its
+# owner so the test subprocess can write container conf files without root.
 setup_file() {
   if [[ ! -d /etc/pve/lxc ]]; then
     mkdir -p /etc/pve/lxc 2>/dev/null || sudo mkdir -p /etc/pve/lxc
   fi
-  # Ensure the current user owns the directory so tests can write to it
+  # Best-effort ownership change; fail loudly only when we definitely can't write.
   chown "$(id -u):$(id -g)" /etc/pve/lxc 2>/dev/null \
     || sudo chown "$(id -u):$(id -g)" /etc/pve/lxc 2>/dev/null \
-    || true
+    || { echo "WARNING: could not take ownership of /etc/pve/lxc" >&2; }
+  [[ -w /etc/pve/lxc ]] || { echo "ERROR: /etc/pve/lxc is not writable" >&2; return 1; }
 }
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 # Source the script functions without executing main.
-# The last line of the script is `main "$@"` — we skip it so we can test
-# individual functions in isolation.
+# Convention: the very last line of agentic.sh is `main "$@"`.  head -n -1
+# strips exactly that one line so individual functions can be tested in
+# isolation.  If a blank line is ever appended to the file, update accordingly.
 _load_functions() {
   source <(head -n -1 "$SCRIPT")
 }
@@ -562,12 +567,6 @@ _setup_create_env() {
     CT_DNS='1.1.1.1'
     CT_SSH_KEY=''
 
-    # Patch the AppArmor conf path to use our tmp dir
-    _apparmor_conf() { echo 'lxc.apparmor.profile: unconfined' >> '${TEST_TMP}/etc/pve/lxc/200.conf'; }
-
-    # Redirect pct conf write to TEST_TMP
-    mkdir -p '${TEST_TMP}/etc/pve/lxc'
-    # Override the tee target
     create_container 2>&1 | cat
     grep -q 'ip=dhcp' '${MOCK_BIN}/pct.calls' && echo 'DHCP_FOUND'
   "
@@ -688,15 +687,11 @@ _setup_create_env() {
 
 @test "create_container appends AppArmor unconfined line to LXC conf" {
   _setup_create_env
-  mkdir -p "${TEST_TMP}/etc/pve/lxc"
 
   run bash -c "
     export PATH='${MOCK_BIN}:${PATH}'
     source <(head -n -1 '$SCRIPT')
-
-    # Redirect the AppArmor conf write to our test tmp dir
     CT_ID=205
-
     TEMPLATE_PATH='local:vztmpl/ubuntu-24.04-standard_24.04-2_amd64.tar.zst'
     CT_HOSTNAME='test-apparmor'
     CT_PASSWORD='secret'
@@ -708,14 +703,11 @@ _setup_create_env() {
     CT_IP='dhcp'
     CT_DNS='1.1.1.1'
     CT_SSH_KEY=''
-
-    # Patch the path used by create_container for the lxc conf
-    mkdir -p /etc/pve/lxc 2>/dev/null || true
     create_container
   "
-  # The function appends to /etc/pve/lxc/${CT_ID}.conf
-  # In the test environment we may not have write access; just verify exit 0
   [ "$status" -eq 0 ]
+  # Verify the AppArmor line was actually appended to the LXC conf file
+  grep -q 'lxc.apparmor.profile: unconfined' /etc/pve/lxc/205.conf
 }
 
 # =============================================================================
