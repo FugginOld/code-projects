@@ -1,7 +1,9 @@
-This is a derivative of https://raw.githubusercontent.com/serversathome/ServersatHome/refs/heads/main/agentic.sh. All credit goes to that creator.
+# Claude Proxmox Agentic
 
-Customized to work with my environment. Use as your risk.
+This is a derivative of [Servers at Home agentic.sh](https://raw.githubusercontent.com/serversathome/ServersatHome/refs/heads/main/agentic.sh). All credit goes to that creator.
 
-claude-code shell user name is root. Password is the is first password you set during the setup. (minimum 6 characters)
+Customized to work with my environment. Use at your own risk.
 
-Webui password is the 2nd password you establish during the setup. (minimum 6 characters)
+Claude Code shell user name is `root`. The password is the first password you set during setup. (minimum 6 characters)
+
+Web UI URL is `http://localhost:8443`. Password is the second password you establish during setup. (minimum 6 characters)
