@@ -1,5 +1,9 @@
 # ADS-B Pi TUI
 
+```bash
+curl -fsSL https://raw.githubusercontent.com/FugginOld/code-projects/main/adsb-tui-codex/install.sh | bash
+```
+
 `adsb_tui.py` is a no-dependency curses dashboard for a Raspberry Pi ADS-B receiver.
 
 It focuses on three groups of metrics:

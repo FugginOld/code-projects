@@ -31,6 +31,11 @@ COLOR_DIM = 4
 SDR_MSG_RATE_BASELINE = 24000.0
 ADSB_MSG_RATE_BASELINE = 36000.0
 
+_SUBPROCESS_ENV_KEYS = frozenset({
+    "PATH", "HOME", "USER", "LANG", "LC_ALL", "LC_CTYPE",
+    "PYTHONPATH", "PYTHONHOME", "PYTHONDONTWRITEBYTECODE", "VIRTUAL_ENV",
+})
+
 
 class ControllerState(Enum):
     IDLE = "idle"
@@ -138,6 +143,7 @@ class AutotuneController:
             "Safe start: baseline -> score -> plan -> loop",
         ]
         self._thread: threading.Thread | None = None
+        self._process: subprocess.Popen[str] | None = None
         self._lock = threading.Lock()
         self.confirm_command = ""
         self.confirm_argv: list[str] | None = None
@@ -283,19 +289,24 @@ class AutotuneController:
         self.loop_result = None
         self.state = ControllerState.RUNNING
         self.last_command = command_text
-        self._start_time = time.time()
-        self._set_status("warn", "running")
+        with self._lock:
+            self._start_time = time.time()
+            self.status_level = "warn"
+            self.status_text = "running"
 
         def worker() -> None:
             try:
+                safe_env = {k: v for k, v in os.environ.items() if k in _SUBPROCESS_ENV_KEYS}
                 process = subprocess.Popen(
                     argv,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.STDOUT,
                     text=True,
                     cwd=str(self.script_path.parent if self.script_path else Path.cwd()),
-                    env=os.environ.copy(),
+                    env=safe_env,
                 )
+                with self._lock:
+                    self._process = process
                 all_lines: list[str] = []
                 assert process.stdout is not None
                 for raw_line in process.stdout:
@@ -306,13 +317,25 @@ class AutotuneController:
                 process.wait()
                 output = all_lines or ["(no output)"]
                 self._set_output(command_text, process.returncode, output)
-            except Exception as exc:  # pragma: no cover - defensive for runtime on Pi
+            except (OSError, subprocess.SubprocessError) as exc:
                 self._set_output(command_text, 1, [f"Command failed: {exc}"])
             finally:
+                with self._lock:
+                    self._process = None
                 self.state = ControllerState.IDLE
 
         self._thread = threading.Thread(target=worker, daemon=True)
         self._thread.start()
+
+    def stop(self) -> None:
+        with self._lock:
+            process = self._process
+        if process is not None and process.poll() is None:
+            process.terminate()
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
 
     def _script_argv(self, python_exec: str, subcommand: str, *extra: str) -> list[str]:
         return [python_exec, str(self.script_path), subcommand, "--config", str(self.config_path), *extra]
@@ -449,7 +472,12 @@ def parse_cpu_times() -> CpuTimes | None:
     first = raw.splitlines()[0].split()
     if len(first) < 8 or first[0] != "cpu":
         return None
-    values = [float(value) for value in first[1:]]
+    try:
+        values = [float(value) for value in first[1:]]
+    except ValueError:
+        return None
+    if len(values) < 5:
+        return None
     idle = values[3] + values[4]
     total = sum(values)
     return CpuTimes(idle=idle, total=total)
@@ -724,10 +752,12 @@ def build_adsb_lines(
     last5 = stats.get("last5min", {})
     summary = summarize_aircraft(aircraft_json)
 
-    count_total = summary["total"] or (
-        int(status.get("aircraft_with_pos", 0)) + int(status.get("aircraft_without_pos", 0))
-    )
-    count_pos = summary["with_pos"] or int(status.get("aircraft_with_pos", 0))
+    if aircraft_json:
+        count_total = summary["total"]
+        count_pos = summary["with_pos"]
+    else:
+        count_total = int(status.get("aircraft_with_pos", 0)) + int(status.get("aircraft_without_pos", 0))
+        count_pos = int(status.get("aircraft_with_pos", 0))
     count_no_pos = max(0, count_total - count_pos)
 
     messages_1m = safe_float(last1.get("messages"))
@@ -845,8 +875,10 @@ def build_autotune_lines(width: int, controller: AutotuneController) -> tuple[li
 
     status_text = f"Status : {controller.status_text}"
     if controller.running:
-        if controller._start_time is not None:
-            elapsed = int(time.time() - controller._start_time)
+        with controller._lock:
+            start_time = controller._start_time
+        if start_time is not None:
+            elapsed = int(time.time() - start_time)
             m, s = divmod(elapsed, 60)
             status_text += f" ({m}m{s:02d}s)"
         else:
@@ -1200,11 +1232,14 @@ def run_dashboard(stdscr: curses.window) -> None:
     autotune = AutotuneController()
     help_visible = False
 
-    while True:
-        ch = stdscr.getch()
-        help_visible = _handle_input(ch, autotune, help_visible)
-        metrics = _collect_metrics(state)
-        _render_frame(stdscr, metrics, autotune, help_visible)
+    try:
+        while True:
+            ch = stdscr.getch()
+            help_visible = _handle_input(ch, autotune, help_visible)
+            metrics = _collect_metrics(state)
+            _render_frame(stdscr, metrics, autotune, help_visible)
+    finally:
+        autotune.stop()
 
 
 def main() -> int:

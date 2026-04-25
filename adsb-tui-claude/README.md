@@ -185,8 +185,6 @@ Your Pi details:
 - user: `pi`
 - target folder: `/home/pi/adsb-tui`
 
-curl -fsSL https://raw.githubusercontent.com/FugginOld/code-projects/main/adsb-tui-claude/install.sh
-
 On the Pi, install the launcher:
 
 ```bash

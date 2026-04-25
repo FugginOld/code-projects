@@ -24,7 +24,12 @@ def utc_now_iso() -> str:
 
 
 def load_json(path: Path) -> dict[str, Any]:
-    return json.loads(path.read_text(encoding="utf-8"))
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except OSError as exc:
+        raise RuntimeError(f"Cannot read {path}: {exc}") from exc
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"Invalid JSON in {path}: {exc}") from exc
 
 
 def write_json(path: Path, data: dict[str, Any]) -> None:
@@ -50,7 +55,8 @@ def read_config(path: Path) -> dict[str, Any]:
         state_dir = (path.parent / state_dir).resolve()
     config["output"]["state_dir"] = str(state_dir)
     controller = config.setdefault("controller", {})
-    controller.setdefault("base_url", "http://192.168.9.74")
+    if "base_url" not in controller:
+        raise ValueError(f"Config {path} is missing required key: controller.base_url")
     controller.setdefault("expert_path", "/expert")
     controller.setdefault("restart_path", "/restart")
     controller.setdefault("restart_timeout_seconds", 180)
@@ -145,7 +151,7 @@ def http_request(url: str, method: str = "GET", data: dict[str, str] | None = No
     try:
         with urlopen(request, timeout=30) as response:
             status = getattr(response, "status", 200)
-            body = response.read().decode("utf-8", errors="replace")
+            body = response.read(1024 * 1024).decode("utf-8", errors="replace")
             return status, body
     except HTTPError as exc:
         body = exc.read().decode("utf-8", errors="replace")
@@ -186,7 +192,12 @@ def apply_extra_env(config: dict[str, Any], env_map: dict[str, str], reason: str
     final_status = None
     while time.monotonic() < deadline:
         logger.debug("Polling %s for restart completion", restart_url)
-        poll_status, poll_body = http_request(restart_url, method="GET")
+        try:
+            poll_status, poll_body = http_request(restart_url, method="GET")
+        except RuntimeError as exc:
+            logger.warning("Restart poll failed: %s; retrying", exc)
+            time.sleep(float(controller["restart_poll_seconds"]))
+            continue
         final_status = poll_status
         final_body = poll_body.strip()
         restart_checks.append(
@@ -274,20 +285,20 @@ def collect_snapshot(config: dict[str, Any]) -> dict[str, Any]:
 
 def score_snapshot(snapshot: dict[str, Any], config: dict[str, Any]) -> dict[str, Any]:
     weights = config["scoring"]["weights"]
-    airspy = snapshot["airspy"]
-    readsb = snapshot["readsb"]
-    live = snapshot["live"]
+    airspy = snapshot.get("airspy") or {}
+    readsb = snapshot.get("readsb") or {}
+    live = snapshot.get("live") or {}
 
     parts = {
-        "aircraft_with_pos": weights["aircraft_with_pos"] * float(readsb["aircraft_with_pos"]),
-        "messages_per_second": weights["messages_per_second"] * float(readsb["messages_per_second"]),
-        "positions_per_second": weights["positions_per_second"] * float(readsb["positions_per_second"]),
-        "max_range_nm": weights["max_range_nm"] * float(readsb["max_range_nm"]),
-        "live_range_nm": weights["live_range_nm"] * float(live["farthest_nm"]),
-        "strong_signals": weights["strong_signals"] * float(live["strong_count"]),
-        "median_snr": weights["median_snr"] * float(airspy["median_snr"] or 0.0),
-        "lost_buffers": weights["lost_buffers"] * float(airspy["lost_buffers"] or 0.0),
-        "median_noise": weights["median_noise"] * float(airspy["median_noise"] or 0.0),
+        "aircraft_with_pos": weights.get("aircraft_with_pos", 0.0) * float(readsb.get("aircraft_with_pos", 0)),
+        "messages_per_second": weights.get("messages_per_second", 0.0) * float(readsb.get("messages_per_second", 0)),
+        "positions_per_second": weights.get("positions_per_second", 0.0) * float(readsb.get("positions_per_second", 0)),
+        "max_range_nm": weights.get("max_range_nm", 0.0) * float(readsb.get("max_range_nm", 0)),
+        "live_range_nm": weights.get("live_range_nm", 0.0) * float(live.get("farthest_nm") or 0.0),
+        "strong_signals": weights.get("strong_signals", 0.0) * float(live.get("strong_count") or 0.0),
+        "median_snr": weights.get("median_snr", 0.0) * float(airspy.get("median_snr") or 0.0),
+        "lost_buffers": weights.get("lost_buffers", 0.0) * float(airspy.get("lost_buffers") or 0.0),
+        "median_noise": weights.get("median_noise", 0.0) * float(airspy.get("median_noise") or 0.0),
     }
     total = sum(parts.values())
 
@@ -404,8 +415,8 @@ def candidate_acceptance(
     be promoted and reasons is a list of rejection strings (empty when accepted).
     """
     tuning = config["tuning"]
-    minimum_improvement = float(tuning.get("minimum_improvement", 0.0))
-    significant_improvement = float(tuning.get("significant_improvement", minimum_improvement))
+    minimum_improvement = safe_float(tuning.get("minimum_improvement")) or 0.0
+    significant_improvement = safe_float(tuning.get("significant_improvement")) or minimum_improvement
     max_lost_buffers = int(tuning.get("max_lost_buffers", 0))
     minimum_median_snr = tuning.get("minimum_median_snr")
     if minimum_median_snr is None:
