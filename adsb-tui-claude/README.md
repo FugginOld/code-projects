@@ -185,18 +185,7 @@ Your Pi details:
 - user: `pi`
 - target folder: `/home/pi/adsb-tui`
 
-From Windows PowerShell on your PC, copy the package to the Pi:
-
-```powershell
-ssh pi@192.168.9.74 "mkdir -p /home/pi/adsb-tui"
-scp C:\Users\Joe\Documents\Codex\adsb-tui-package\* pi@192.168.9.74:/home/pi/adsb-tui/
-```
-
-Then SSH into the Pi:
-
-```powershell
-ssh pi@192.168.9.74
-```
+curl -fsSL https://raw.githubusercontent.com/FugginOld/code-projects/main/adsb-tui-claude/install.sh
 
 On the Pi, install the launcher:
 
