@@ -74,8 +74,10 @@ get_config() {
   read -rp "Disk size in GB [30]: " CT_DISK
   CT_DISK="${CT_DISK:-30}"
 
-  read -rp "Storage [truenas-lvm]: " CT_STORAGE
-  CT_STORAGE="${CT_STORAGE:-truenas-lvm}"
+  DEFAULT_STORAGE=$(pvesm status --content rootdir 2>/dev/null | awk 'NR>1 {print $1; exit}')
+  [[ -z "$DEFAULT_STORAGE" ]] && DEFAULT_STORAGE="local-lvm"
+  read -rp "Storage [$DEFAULT_STORAGE]: " CT_STORAGE
+  CT_STORAGE="${CT_STORAGE:-$DEFAULT_STORAGE}"
 
   # Network - default DHCP
   read -rp "IP address (DHCP or x.x.x.x/xx) [dhcp]: " CT_IP
