@@ -33,6 +33,15 @@ def read_config(path: Path) -> dict[str, Any]:
     if not state_dir.is_absolute():
         state_dir = (path.parent / state_dir).resolve()
     config["output"]["state_dir"] = str(state_dir)
+    paths = config.setdefault("paths", {})
+    if isinstance(paths, dict):
+        for key, value in list(paths.items()):
+            if not isinstance(value, str):
+                continue
+            data_path = Path(value)
+            if not data_path.is_absolute():
+                data_path = (path.parent / data_path).resolve()
+            paths[key] = str(data_path)
     controller = config.setdefault("controller", {})
     controller.setdefault("base_url", "http://192.168.9.74")
     controller.setdefault("expert_path", "/expert")
@@ -60,7 +69,21 @@ def read_config(path: Path) -> dict[str, Any]:
             }
         },
     )
-    config.setdefault("current_extra_env", {})
+    current_extra_env = config.setdefault("current_extra_env", {})
+    last_applied_path = state_dir / "last-applied-env.latest.json"
+    if last_applied_path.exists():
+        try:
+            last_applied = load_json(last_applied_path)
+            last_env_map = last_applied.get("env_map")
+            if isinstance(last_env_map, dict):
+                config["current_extra_env"] = {str(k): str(v) for k, v in last_env_map.items()}
+            elif not isinstance(current_extra_env, dict):
+                config["current_extra_env"] = {}
+        except (OSError, json.JSONDecodeError):
+            if not isinstance(current_extra_env, dict):
+                config["current_extra_env"] = {}
+    elif not isinstance(current_extra_env, dict):
+        config["current_extra_env"] = {}
     return config
 
 

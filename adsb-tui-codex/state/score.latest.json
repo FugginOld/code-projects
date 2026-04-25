@@ -1,0 +1,47 @@
+{
+  "captured_at": "2026-04-25T19:48:45+00:00",
+  "score": 0.0,
+  "parts": {
+    "aircraft_with_pos": 0.0,
+    "messages_per_second": 0.0,
+    "positions_per_second": 0.0,
+    "max_range_nm": 0.0,
+    "live_range_nm": 0.0,
+    "strong_signals": 0.0,
+    "median_snr": 0.0,
+    "lost_buffers": -0.0,
+    "median_noise": -0.0
+  },
+  "snapshot": {
+    "captured_at": "2026-04-25T19:48:45+00:00",
+    "station_name": "FugginADSB",
+    "mode": "dry-run",
+    "receiver_version": null,
+    "airspy": {
+      "gain": null,
+      "samplerate": null,
+      "lost_buffers": 0,
+      "median_rssi": null,
+      "median_snr": null,
+      "median_noise": null,
+      "airspy_messages_per_second": 0.0
+    },
+    "readsb": {
+      "aircraft_with_pos": 0,
+      "aircraft_without_pos": 0,
+      "messages_per_second": 0.0,
+      "positions_per_second": 0.0,
+      "max_range_nm": 0.0,
+      "global_cpr_ok": 0,
+      "local_cpr_ok": 0,
+      "remote_bytes_in_per_second": 0.0,
+      "remote_bytes_out_per_second": 0.0
+    },
+    "live": {
+      "live_aircraft_count": 0,
+      "live_with_pos": 0,
+      "strong_signals": 0,
+      "live_range_nm": 0.0
+    }
+  }
+}

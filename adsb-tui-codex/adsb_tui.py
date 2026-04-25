@@ -244,7 +244,6 @@ class AutotuneController:
         command = tokens[0].lower()
         extras = tokens[1:]
         python_exec = sys.executable or shutil.which("python3") or "python3"
-        base = [python_exec, str(self.script_path), "--config", str(self.config_path)]
 
         if command == "baseline":
             return [python_exec, str(self.script_path), "baseline", "--config", str(self.config_path)], False
@@ -1079,7 +1078,7 @@ def run_dashboard(stdscr: Any) -> None:
                         "normal",
                         "normal",
                         metric_level(lost_buffers, 1, 3),
-                        inverse_metric_level(sdr_rssi, 35, 32),
+                        inverse_metric_level(sdr_rssi, -35, -42),
                         inverse_metric_level(sdr_snr, 10, 7),
                         "normal",
                         "normal",

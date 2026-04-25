@@ -1,0 +1,118 @@
+{
+  "generated_at": "2026-04-25T19:48:45+00:00",
+  "station_name": "FugginADSB",
+  "mode": "dry-run",
+  "variable": "timeout",
+  "env_key": "AIRSPY_ADSB_TIMEOUT",
+  "baseline": {
+    "captured_at": "2026-04-25T19:48:45+00:00",
+    "score": 0.0,
+    "parts": {
+      "aircraft_with_pos": 0.0,
+      "messages_per_second": 0.0,
+      "positions_per_second": 0.0,
+      "max_range_nm": 0.0,
+      "live_range_nm": 0.0,
+      "strong_signals": 0.0,
+      "median_snr": 0.0,
+      "lost_buffers": -0.0,
+      "median_noise": -0.0
+    },
+    "snapshot": {
+      "captured_at": "2026-04-25T19:48:45+00:00",
+      "station_name": "FugginADSB",
+      "mode": "dry-run",
+      "receiver_version": null,
+      "airspy": {
+        "gain": null,
+        "samplerate": null,
+        "lost_buffers": 0,
+        "median_rssi": null,
+        "median_snr": null,
+        "median_noise": null,
+        "airspy_messages_per_second": 0.0
+      },
+      "readsb": {
+        "aircraft_with_pos": 0,
+        "aircraft_without_pos": 0,
+        "messages_per_second": 0.0,
+        "positions_per_second": 0.0,
+        "max_range_nm": 0.0,
+        "global_cpr_ok": 0,
+        "local_cpr_ok": 0,
+        "remote_bytes_in_per_second": 0.0,
+        "remote_bytes_out_per_second": 0.0
+      },
+      "live": {
+        "live_aircraft_count": 0,
+        "live_with_pos": 0,
+        "strong_signals": 0,
+        "live_range_nm": 0.0
+      }
+    }
+  },
+  "experiments": [
+    {
+      "step": 1,
+      "mode": "dry-run",
+      "variable": "timeout",
+      "env_key": "AIRSPY_ADSB_TIMEOUT",
+      "candidate": "45",
+      "warmup_seconds": 120,
+      "observation_seconds": 900,
+      "sample_interval_seconds": 30.0,
+      "baseline_score": 0.0,
+      "apply_action": "NO-OP in dry-run; live loop will update Expert env, restart the stack, and sample repeatedly",
+      "success_criteria": {
+        "minimum_score_delta": 0.0,
+        "significant_improvement": 2.0,
+        "max_lost_buffers": 0,
+        "minimum_median_snr": null,
+        "marginal_range_gain_nm": 2.0
+      }
+    },
+    {
+      "step": 2,
+      "mode": "dry-run",
+      "variable": "timeout",
+      "env_key": "AIRSPY_ADSB_TIMEOUT",
+      "candidate": "60",
+      "warmup_seconds": 120,
+      "observation_seconds": 900,
+      "sample_interval_seconds": 30.0,
+      "baseline_score": 0.0,
+      "apply_action": "NO-OP in dry-run; live loop will update Expert env, restart the stack, and sample repeatedly",
+      "success_criteria": {
+        "minimum_score_delta": 0.0,
+        "significant_improvement": 2.0,
+        "max_lost_buffers": 0,
+        "minimum_median_snr": null,
+        "marginal_range_gain_nm": 2.0
+      }
+    },
+    {
+      "step": 3,
+      "mode": "dry-run",
+      "variable": "timeout",
+      "env_key": "AIRSPY_ADSB_TIMEOUT",
+      "candidate": "75",
+      "warmup_seconds": 120,
+      "observation_seconds": 900,
+      "sample_interval_seconds": 30.0,
+      "baseline_score": 0.0,
+      "apply_action": "NO-OP in dry-run; live loop will update Expert env, restart the stack, and sample repeatedly",
+      "success_criteria": {
+        "minimum_score_delta": 0.0,
+        "significant_improvement": 2.0,
+        "max_lost_buffers": 0,
+        "minimum_median_snr": null,
+        "marginal_range_gain_nm": 2.0
+      }
+    }
+  ],
+  "notes": [
+    "Run only one gain candidate at a time.",
+    "Observe candidates with repeated samples before promoting one.",
+    "Marginal gains should not degrade aircraft, message, or position rates."
+  ]
+}
