@@ -86,7 +86,6 @@ get_config() {
   [[ -z "$DEFAULT_STORAGE" ]] && DEFAULT_STORAGE="local-lvm"
   read -rp "Storage [$DEFAULT_STORAGE]: " CT_STORAGE
   CT_STORAGE="${CT_STORAGE:-$DEFAULT_STORAGE}"
-  pvesm status 2>/dev/null | awk 'NR>1 {print $1}' | grep -qx "$CT_STORAGE" || error "Storage '$CT_STORAGE' not found."
 
   # Network - default DHCP
   read -rp "IP address (DHCP or x.x.x.x/xx) [dhcp]: " CT_IP
