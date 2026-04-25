@@ -479,7 +479,9 @@ services:
 DCOMPOSE
 
 mkdir -p /docker/code-server
-cat > /docker/code-server/docker-compose.yml << 'DCOMPOSE2'
+CODE_SERVER_PASSWORD=$(printf '%s' '__CT_CODESERVER_PASS_B64__' | base64 -d)
+CODE_SERVER_PASSWORD_YAML=$(printf '%s' "$CODE_SERVER_PASSWORD" | sed "s/'/''/g")
+cat > /docker/code-server/docker-compose.yml << DCOMPOSE2
 services:
   code-server:
     image: lscr.io/linuxserver/code-server:latest
@@ -489,7 +491,7 @@ services:
       PUID: "0"
       PGID: "0"
       TZ: __CT_TZ__
-      PASSWORD: __CT_CODESERVER_PASS__
+      PASSWORD: '${CODE_SERVER_PASSWORD_YAML}'
     volumes:
       - ./config:/config
       - /:/config/workspace
@@ -533,9 +535,11 @@ echo "╚═══════════════════════�
 PROVISION_EOF
 
   # Inject host-side variables into the provision script
+  local ct_codeserver_pass_b64
+  ct_codeserver_pass_b64=$(printf '%s' "$CT_CODESERVER_PASS" | base64 -w0)
   sed -i \
     -e "s|__CT_TZ__|${CT_TZ}|g" \
-    -e "s|__CT_CODESERVER_PASS__|${CT_CODESERVER_PASS}|g" \
+    -e "s|__CT_CODESERVER_PASS_B64__|${ct_codeserver_pass_b64}|g" \
     "/tmp/provision-${CT_ID}.sh"
 
   chmod +x /tmp/provision-${CT_ID}.sh
