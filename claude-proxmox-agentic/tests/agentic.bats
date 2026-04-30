@@ -683,11 +683,8 @@ _setup_create_env() {
 }
 
 @test "create_container appends AppArmor unconfined line to LXC conf" {
-  [[ "$BATS_PVE_LXC_WRITABLE" == "true" ]] \
-    || skip "/etc/pve/lxc is not writable on this host — skipping AppArmor conf test"
-
   # Use a test-specific CT_ID unlikely to collide with a real container.
-  local test_ct_id="99$$"
+  local test_ct_id="99${$}${RANDOM}"
   local conf_file="/etc/pve/lxc/${test_ct_id}.conf"
   _setup_create_env
 
