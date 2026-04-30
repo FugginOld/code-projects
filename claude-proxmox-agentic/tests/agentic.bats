@@ -12,28 +12,24 @@ SCRIPT="${BATS_TEST_DIRNAME}/../agentic.sh"
 
 # create_container() appends an AppArmor line to /etc/pve/lxc/<CT_ID>.conf.
 # That path is hardcoded in the production script and is specific to Proxmox.
-# These tests MUST run on a non-production, isolated test host.
-# setup_file creates the directory (if absent) and makes the current user its
-# owner so the test subprocess can write container conf files without root.
+# Tests that exercise this code path are skipped unless the directory already
+# exists and is writable by the current user (e.g. a dedicated CI container
+# or a Proxmox node set up for integration testing).  We deliberately avoid
+# sudo/chown here so this test file is safe to run on any host.
 setup_file() {
-  if [[ ! -d /etc/pve/lxc ]]; then
-    mkdir -p /etc/pve/lxc 2>/dev/null || sudo mkdir -p /etc/pve/lxc
+  export BATS_PVE_LXC_WRITABLE=false
+  if [[ -d /etc/pve/lxc && -w /etc/pve/lxc ]]; then
+    export BATS_PVE_LXC_WRITABLE=true
   fi
-  # Best-effort ownership change; fail loudly only when we definitely can't write.
-  chown "$(id -u):$(id -g)" /etc/pve/lxc 2>/dev/null \
-    || sudo chown "$(id -u):$(id -g)" /etc/pve/lxc 2>/dev/null \
-    || { echo "WARNING: could not take ownership of /etc/pve/lxc" >&2; }
-  [[ -w /etc/pve/lxc ]] || { echo "ERROR: /etc/pve/lxc is not writable" >&2; return 1; }
 }
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 # Source the script functions without executing main.
-# Convention: the very last line of agentic.sh is `main "$@"`.  head -n -1
-# strips exactly that one line so individual functions can be tested in
-# isolation.  If a blank line is ever appended to the file, update accordingly.
+# sed removes the `main "$@"` entrypoint line wherever it appears so tests
+# stay safe even if blank lines are added before or after the call.
 _load_functions() {
-  source <(head -n -1 "$SCRIPT")
+  source <(sed '/^main "\$@"$/d' "$SCRIPT")
 }
 
 # Create a mock executable in MOCK_BIN.
@@ -49,11 +45,15 @@ _mock() {
 }
 
 # Create a mock that records its arguments to a file.
+# Each argument is written on its own line; a blank separator line follows
+# each invocation so callers can reliably grep individual arguments even when
+# they contain spaces.
 _mock_record() {
   local name="$1" rc="${2:-0}"
   {
     printf '#!/usr/bin/env bash\n'
-    printf 'printf "%%s\\n" "$*" >> "%s/%s.calls"\n' "$MOCK_BIN" "$name"
+    printf 'for _arg in "$@"; do printf "%%s\\n" "$_arg"; done >> "%s/%s.calls"\n' "$MOCK_BIN" "$name"
+    printf 'printf "\\n" >> "%s/%s.calls"\n' "$MOCK_BIN" "$name"
     printf 'exit %d\n' "$rc"
   } > "${MOCK_BIN}/${name}"
   chmod +x "${MOCK_BIN}/${name}"
@@ -89,40 +89,40 @@ teardown() {
 
 @test "info prints [INFO] prefix" {
   _load_functions
-  run bash -c "source <(head -n -1 '$SCRIPT'); info 'hello world'"
+  run bash -c "source <(sed '/^main \"\$@\"$/d' '$SCRIPT'); info 'hello world'"
   [[ "$output" == *"[INFO]"* ]]
   [[ "$output" == *"hello world"* ]]
 }
 
 @test "success prints [OK] prefix" {
   _load_functions
-  run bash -c "source <(head -n -1 '$SCRIPT'); success 'all good'"
+  run bash -c "source <(sed '/^main \"\$@\"$/d' '$SCRIPT'); success 'all good'"
   [[ "$output" == *"[OK]"* ]]
   [[ "$output" == *"all good"* ]]
 }
 
 @test "warn prints [WARN] prefix" {
   _load_functions
-  run bash -c "source <(head -n -1 '$SCRIPT'); warn 'careful'"
+  run bash -c "source <(sed '/^main \"\$@\"$/d' '$SCRIPT'); warn 'careful'"
   [[ "$output" == *"[WARN]"* ]]
   [[ "$output" == *"careful"* ]]
 }
 
 @test "error prints [ERROR] prefix and exits with code 1" {
-  run bash -c "source <(head -n -1 '$SCRIPT'); error 'something broke'"
+  run bash -c "source <(sed '/^main \"\$@\"$/d' '$SCRIPT'); error 'something broke'"
   [ "$status" -eq 1 ]
   [[ "$output" == *"[ERROR]"* ]]
   [[ "$output" == *"something broke"* ]]
 }
 
 @test "error exits even with set -euo pipefail active" {
-  run bash -c "set -euo pipefail; source <(head -n -1 '$SCRIPT'); error 'boom'; echo 'should not reach here'"
+  run bash -c "set -euo pipefail; source <(sed '/^main \"\$@\"$/d' '$SCRIPT'); error 'boom'; echo 'should not reach here'"
   [ "$status" -eq 1 ]
   [[ "$output" != *"should not reach here"* ]]
 }
 
 @test "header prints the banner box" {
-  run bash -c "source <(head -n -1 '$SCRIPT'); header"
+  run bash -c "source <(sed '/^main \"\$@\"$/d' '$SCRIPT'); header"
   [ "$status" -eq 0 ]
   [[ "$output" == *"Claude Code LXC Deployer"* ]]
 }
@@ -134,7 +134,7 @@ teardown() {
 @test "preflight passes when root and required commands exist" {
   run bash -c "
     export PATH='${MOCK_BIN}:${PATH}'
-    source <(head -n -1 '$SCRIPT')
+    source <(sed '/^main \"\$@\"$/d' '$SCRIPT')
     preflight
   "
   [ "$status" -eq 0 ]
@@ -145,7 +145,7 @@ teardown() {
   _mock id 0 "1000"
   run bash -c "
     export PATH='${MOCK_BIN}:${PATH}'
-    source <(head -n -1 '$SCRIPT')
+    source <(sed '/^main \"\$@\"$/d' '$SCRIPT')
     preflight
   "
   [ "$status" -eq 1 ]
@@ -156,7 +156,7 @@ teardown() {
   rm -f "${MOCK_BIN}/pct"
   run bash -c "
     export PATH='${MOCK_BIN}:${PATH}'
-    source <(head -n -1 '$SCRIPT')
+    source <(sed '/^main \"\$@\"$/d' '$SCRIPT')
     preflight
   "
   [ "$status" -eq 1 ]
@@ -167,7 +167,7 @@ teardown() {
   rm -f "${MOCK_BIN}/pveam"
   run bash -c "
     export PATH='${MOCK_BIN}:${PATH}'
-    source <(head -n -1 '$SCRIPT')
+    source <(sed '/^main \"\$@\"$/d' '$SCRIPT')
     preflight
   "
   [ "$status" -eq 1 ]
@@ -215,7 +215,7 @@ exit 0
 MOCK
     chmod +x '${MOCK_BIN}/pvesm'
 
-    source <(head -n -1 '$SCRIPT')
+    source <(sed '/^main \"\$@\"$/d' '$SCRIPT')
     printf '%s\n' $'${answers}' | get_config
   "
 }
@@ -285,7 +285,7 @@ exit 0
 MOCK
     chmod +x '${MOCK_BIN}/pvesm'
 
-    source <(head -n -1 '$SCRIPT')
+    source <(sed '/^main \"\$@\"$/d' '$SCRIPT')
     printf '%s\n' $'\n\n\nsecret\nsecret\n\n\n\n\n\n\n\n\n\ny' | get_config
   "
   [ "$status" -eq 1 ]
@@ -326,7 +326,7 @@ exit 0
 M
     chmod +x '${MOCK_BIN}/pvesm'
 
-    source <(head -n -1 '$SCRIPT')
+    source <(sed '/^main \"\$@\"$/d' '$SCRIPT')
     get_config < <(printf '\n\n\nsecret\nsecret\n\n\n\n\n\ndhcp\n\n\n\ny\n')
     echo \"CT_ID=\${CT_ID}\"
   "
@@ -366,7 +366,7 @@ exit 0
 M
     chmod +x '${MOCK_BIN}/pvesm'
 
-    source <(head -n -1 '$SCRIPT')
+    source <(sed '/^main \"\$@\"$/d' '$SCRIPT')
     get_config < <(printf '\n\n\nsecret\nsecret\n\n\n\n\n\ndhcp\n\n\n\ny\n')
     echo \"CT_ID=\${CT_ID}\"
   "
@@ -400,7 +400,7 @@ exit 0
 M
     chmod +x '${MOCK_BIN}/pvesm'
 
-    source <(head -n -1 '$SCRIPT')
+    source <(sed '/^main \"\$@\"$/d' '$SCRIPT')
     get_config < <(printf '\n\n\nsecret\nsecret\n\n\n\n\n\ndhcp\n\n\n\ny\n')
     echo \"TEMPLATE=\${TEMPLATE}\"
   "
@@ -432,7 +432,7 @@ exit 0
 M
     chmod +x '${MOCK_BIN}/pveam'
 
-    source <(head -n -1 '$SCRIPT')
+    source <(sed '/^main \"\$@\"$/d' '$SCRIPT')
     get_config < <(printf '\n\n\nsecret\nsecret\n\n\n\n\n\ndhcp\n\n\n\ny\n')
     echo \"CT_STORAGE=\${CT_STORAGE}\"
   "
@@ -457,7 +457,7 @@ MOCK
 
   run bash -c "
     export PATH='${MOCK_BIN}:${PATH}'
-    source <(head -n -1 '$SCRIPT')
+    source <(sed '/^main \"\$@\"$/d' '$SCRIPT')
     TEMPLATE='ubuntu-24.04-standard_24.04-2_amd64.tar.zst'
     get_template
     echo \"TEMPLATE_PATH=\${TEMPLATE_PATH}\"
@@ -486,7 +486,7 @@ MOCK
 
   run bash -c "
     export PATH='${MOCK_BIN}:${PATH}'
-    source <(head -n -1 '$SCRIPT')
+    source <(sed '/^main \"\$@\"$/d' '$SCRIPT')
     TEMPLATE='ubuntu-24.04-standard_24.04-2_amd64.tar.zst'
     get_template
     echo \"TEMPLATE_PATH=\${TEMPLATE_PATH}\"
@@ -509,7 +509,7 @@ MOCK
 
   run bash -c "
     export PATH='${MOCK_BIN}:${PATH}'
-    source <(head -n -1 '$SCRIPT')
+    source <(sed '/^main \"\$@\"$/d' '$SCRIPT')
     TEMPLATE='ubuntu-24.04-standard_24.04-2_amd64.tar.zst'
     get_template
   "
@@ -527,7 +527,7 @@ MOCK
 
   run bash -c "
     export PATH='${MOCK_BIN}:${PATH}'
-    source <(head -n -1 '$SCRIPT')
+    source <(sed '/^main \"\$@\"$/d' '$SCRIPT')
     TEMPLATE='mytemplate.tar.zst'
     get_template
     echo \"PATH=\${TEMPLATE_PATH}\"
@@ -541,11 +541,12 @@ MOCK
 # =============================================================================
 
 _setup_create_env() {
+  # create_container writes an AppArmor line to /etc/pve/lxc/<CT_ID>.conf.
+  # Skip all create_container tests on hosts where that directory isn't writable.
+  [[ "$BATS_PVE_LXC_WRITABLE" == "true" ]] \
+    || skip "/etc/pve/lxc is not writable on this host — skipping create_container tests"
   # Write a pct mock that records its arguments
   _mock_record pct 0
-  # LXC conf directory for AppArmor line injection
-  mkdir -p "${TEST_TMP}/etc/pve/lxc"
-  export _TEST_CONF_DIR="${TEST_TMP}/etc/pve/lxc"
 }
 
 @test "create_container builds DHCP network string" {
@@ -553,7 +554,7 @@ _setup_create_env() {
 
   run bash -c "
     export PATH='${MOCK_BIN}:${PATH}'
-    source <(head -n -1 '$SCRIPT')
+    source <(sed '/^main \"\$@\"$/d' '$SCRIPT')
     CT_ID=200
     TEMPLATE_PATH='local:vztmpl/ubuntu-24.04-standard_24.04-2_amd64.tar.zst'
     CT_HOSTNAME='test-host'
@@ -578,7 +579,7 @@ _setup_create_env() {
 
   run bash -c "
     export PATH='${MOCK_BIN}:${PATH}'
-    source <(head -n -1 '$SCRIPT')
+    source <(sed '/^main \"\$@\"$/d' '$SCRIPT')
     CT_ID=201
     TEMPLATE_PATH='local:vztmpl/ubuntu-24.04-standard_24.04-2_amd64.tar.zst'
     CT_HOSTNAME='test-static'
@@ -593,7 +594,6 @@ _setup_create_env() {
     CT_DNS='8.8.8.8'
     CT_SSH_KEY=''
 
-    mkdir -p '${TEST_TMP}/etc/pve/lxc'
     create_container 2>&1 | cat
     # Check that the pct call contained the static IP and gateway
     grep -q '192.168.1.50/24' '${MOCK_BIN}/pct.calls' && echo 'STATIC_IP_FOUND'
@@ -612,7 +612,7 @@ _setup_create_env() {
 
   run bash -c "
     export PATH='${MOCK_BIN}:${PATH}'
-    source <(head -n -1 '$SCRIPT')
+    source <(sed '/^main \"\$@\"$/d' '$SCRIPT')
     CT_ID=202
     TEMPLATE_PATH='local:vztmpl/ubuntu-24.04-standard_24.04-2_amd64.tar.zst'
     CT_HOSTNAME='test-ssh'
@@ -626,7 +626,6 @@ _setup_create_env() {
     CT_DNS='1.1.1.1'
     CT_SSH_KEY='${fake_key}'
 
-    mkdir -p '${TEST_TMP}/etc/pve/lxc'
     create_container 2>&1 | cat
     grep -q 'ssh-public-keys' '${MOCK_BIN}/pct.calls' && echo 'SSH_KEY_FOUND'
   "
@@ -638,7 +637,7 @@ _setup_create_env() {
 
   run bash -c "
     export PATH='${MOCK_BIN}:${PATH}'
-    source <(head -n -1 '$SCRIPT')
+    source <(sed '/^main \"\$@\"$/d' '$SCRIPT')
     CT_ID=203
     TEMPLATE_PATH='local:vztmpl/ubuntu-24.04-standard_24.04-2_amd64.tar.zst'
     CT_HOSTNAME='test-nossh'
@@ -652,7 +651,6 @@ _setup_create_env() {
     CT_DNS='1.1.1.1'
     CT_SSH_KEY=''
 
-    mkdir -p '${TEST_TMP}/etc/pve/lxc'
     create_container 2>&1 | cat
     grep -qv 'ssh-public-keys' '${MOCK_BIN}/pct.calls' && echo 'NO_SSH_KEY'
   "
@@ -664,7 +662,7 @@ _setup_create_env() {
 
   run bash -c "
     export PATH='${MOCK_BIN}:${PATH}'
-    source <(head -n -1 '$SCRIPT')
+    source <(sed '/^main \"\$@\"$/d' '$SCRIPT')
     CT_ID=204
     TEMPLATE_PATH='local:vztmpl/ubuntu-24.04-standard_24.04-2_amd64.tar.zst'
     CT_HOSTNAME='test-badkey'
@@ -678,7 +676,6 @@ _setup_create_env() {
     CT_DNS='1.1.1.1'
     CT_SSH_KEY='/nonexistent/key.pub'
 
-    mkdir -p '${TEST_TMP}/etc/pve/lxc'
     create_container 2>&1 | cat
     ! grep -q 'ssh-public-keys' '${MOCK_BIN}/pct.calls' && echo 'NO_SSH_KEY'
   "
@@ -686,12 +683,18 @@ _setup_create_env() {
 }
 
 @test "create_container appends AppArmor unconfined line to LXC conf" {
+  [[ "$BATS_PVE_LXC_WRITABLE" == "true" ]] \
+    || skip "/etc/pve/lxc is not writable on this host — skipping AppArmor conf test"
+
+  # Use a test-specific CT_ID unlikely to collide with a real container.
+  local test_ct_id="99$$"
+  local conf_file="/etc/pve/lxc/${test_ct_id}.conf"
   _setup_create_env
 
   run bash -c "
     export PATH='${MOCK_BIN}:${PATH}'
-    source <(head -n -1 '$SCRIPT')
-    CT_ID=205
+    source <(sed '/^main \"\$@\"$/d' '$SCRIPT')
+    CT_ID=${test_ct_id}
     TEMPLATE_PATH='local:vztmpl/ubuntu-24.04-standard_24.04-2_amd64.tar.zst'
     CT_HOSTNAME='test-apparmor'
     CT_PASSWORD='secret'
@@ -707,7 +710,9 @@ _setup_create_env() {
   "
   [ "$status" -eq 0 ]
   # Verify the AppArmor line was actually appended to the LXC conf file
-  grep -q 'lxc.apparmor.profile: unconfined' /etc/pve/lxc/205.conf
+  grep -q 'lxc.apparmor.profile: unconfined' "$conf_file"
+  # Clean up the conf file created by this test
+  rm -f "$conf_file"
 }
 
 # =============================================================================
@@ -726,7 +731,7 @@ MOCK
 
   run bash -c "
     export PATH='${MOCK_BIN}:${PATH}'
-    source <(head -n -1 '$SCRIPT')
+    source <(sed '/^main \"\$@\"$/d' '$SCRIPT')
     CT_ID=300
     CT_GW='192.168.1.1'
     CT_DNS='1.1.1.1'
@@ -751,7 +756,7 @@ MOCK
 
   run bash -c "
     export PATH='${MOCK_BIN}:${PATH}'
-    source <(head -n -1 '$SCRIPT')
+    source <(sed '/^main \"\$@\"$/d' '$SCRIPT')
     CT_ID=301
     CT_GW='192.168.1.1'
     CT_DNS='1.1.1.1'
@@ -762,16 +767,13 @@ MOCK
 }
 
 @test "start_container uses CT_DNS when CT_GW is unset" {
-  # When DHCP is used, CT_GW is unset; the script falls back to CT_DNS for ping
-  cat > "${MOCK_BIN}/pct" << 'MOCK'
-#!/usr/bin/env bash
-exit 0
-MOCK
-  chmod +x "${MOCK_BIN}/pct"
+  # When DHCP is used, CT_GW is unset; the script falls back to CT_DNS for ping.
+  # Use a recording pct mock so we can assert that the ping target is CT_DNS.
+  _mock_record pct 0
 
   run bash -c "
     export PATH='${MOCK_BIN}:${PATH}'
-    source <(head -n -1 '$SCRIPT')
+    source <(sed '/^main \"\$@\"$/d' '$SCRIPT')
     CT_ID=302
     CT_DNS='1.1.1.1'
     # CT_GW intentionally not set
@@ -779,6 +781,8 @@ MOCK
     start_container
   "
   [ "$status" -eq 0 ]
+  # The pct exec ping invocation must have targeted CT_DNS (1.1.1.1)
+  grep -q '1.1.1.1' "${MOCK_BIN}/pct.calls"
 }
 
 # =============================================================================
@@ -790,7 +794,7 @@ MOCK
 
   run bash -c "
     export PATH='${MOCK_BIN}:${PATH}'
-    source <(head -n -1 '$SCRIPT')
+    source <(sed '/^main \"\$@\"$/d' '$SCRIPT')
     CT_ID=400
     CT_TZ='Europe/London'
     CT_CODESERVER_PASS='cs-pass-123'
@@ -818,7 +822,7 @@ EOF
 
   run bash -c "
     export PATH='${MOCK_BIN}:${PATH}'
-    source <(head -n -1 '$SCRIPT')
+    source <(sed '/^main \"\$@\"$/d' '$SCRIPT')
     CT_ID=401
     CT_TZ='America/Chicago'
     CT_CODESERVER_PASS='my-secure-pass'
@@ -849,7 +853,7 @@ EOF
 
   run bash -c "
     export PATH='${MOCK_BIN}:${PATH}'
-    source <(head -n -1 '$SCRIPT')
+    source <(sed '/^main \"\$@\"$/d' '$SCRIPT')
     CT_ID=402
     CT_TZ='Asia/Tokyo'
     CT_CODESERVER_PASS='pass123'
@@ -871,7 +875,7 @@ EOF
 
   run bash -c "
     export PATH='${MOCK_BIN}:${PATH}'
-    source <(head -n -1 '$SCRIPT')
+    source <(sed '/^main \"\$@\"$/d' '$SCRIPT')
     CT_ID=403
     CT_TZ='UTC'
     CT_CODESERVER_PASS='pass'
@@ -890,7 +894,7 @@ EOF
 
   run bash -c "
     export PATH='${MOCK_BIN}:${PATH}'
-    source <(head -n -1 '$SCRIPT')
+    source <(sed '/^main \"\$@\"$/d' '$SCRIPT')
     CT_ID=404
     CT_TZ='UTC'
     CT_CODESERVER_PASS='pass'
@@ -918,7 +922,7 @@ MOCK
 
   run bash -c "
     export PATH='${MOCK_BIN}:${PATH}'
-    source <(head -n -1 '$SCRIPT')
+    source <(sed '/^main \"\$@\"$/d' '$SCRIPT')
     CT_ID=500
     CT_HOSTNAME='my-claude-box'
     CT_CORES=4
@@ -945,7 +949,7 @@ MOCK
 
   run bash -c "
     export PATH='${MOCK_BIN}:${PATH}'
-    source <(head -n -1 '$SCRIPT')
+    source <(sed '/^main \"\$@\"$/d' '$SCRIPT')
     CT_ID=501
     CT_HOSTNAME='claude'
     CT_CORES=2
@@ -973,7 +977,7 @@ MOCK
 
   run bash -c "
     export PATH='${MOCK_BIN}:${PATH}'
-    source <(head -n -1 '$SCRIPT')
+    source <(sed '/^main \"\$@\"$/d' '$SCRIPT')
     CT_ID=502
     CT_HOSTNAME='claude'
     CT_CORES=2
@@ -999,7 +1003,7 @@ MOCK
 
   run bash -c "
     export PATH='${MOCK_BIN}:${PATH}'
-    source <(head -n -1 '$SCRIPT')
+    source <(sed '/^main \"\$@\"$/d' '$SCRIPT')
     CT_ID=503
     CT_HOSTNAME='claude'
     CT_CORES=4
@@ -1026,7 +1030,7 @@ MOCK
 
   run bash -c "
     export PATH='${MOCK_BIN}:${PATH}'
-    source <(head -n -1 '$SCRIPT')
+    source <(sed '/^main \"\$@\"$/d' '$SCRIPT')
     CT_ID=504
     CT_HOSTNAME='claude'
     CT_CORES=8
@@ -1054,7 +1058,7 @@ MOCK
 
   run bash -c "
     export PATH='${MOCK_BIN}:${PATH}'
-    source <(head -n -1 '$SCRIPT')
+    source <(sed '/^main \"\$@\"$/d' '$SCRIPT')
     CT_ID=505
     CT_HOSTNAME='claude'
     CT_CORES=2
@@ -1082,7 +1086,7 @@ MOCK
 
   run bash -c "
     export PATH='${MOCK_BIN}:${PATH}'
-    source <(head -n -1 '$SCRIPT')
+    source <(sed '/^main \"\$@\"$/d' '$SCRIPT')
     CT_ID=506
     CT_HOSTNAME='claude'
     CT_CORES=2
@@ -1134,7 +1138,7 @@ MOCK
 
   run bash -c "
     export PATH='${MOCK_BIN}:${PATH}'
-    source <(head -n -1 '$SCRIPT')
+    source <(sed '/^main \"\$@\"$/d' '$SCRIPT')
 
     # Capture function calls
     CALLS=()
@@ -1153,12 +1157,6 @@ MOCK
   " <<< "$answers"
 
   [ "$status" -eq 0 ]
-  [[ "$output" == *"header"*          ]]
-  [[ "$output" == *"preflight"*       ]]
-  [[ "$output" == *"get_config"*      ]]
-  [[ "$output" == *"get_template"*    ]]
-  [[ "$output" == *"create_container"* ]]
-  [[ "$output" == *"start_container"* ]]
-  [[ "$output" == *"provision_container"* ]]
-  [[ "$output" == *"print_summary"*   ]]
+  # Assert the exact call order — a reordered or missing step will fail this
+  [ "$output" = "header preflight get_config get_template create_container start_container provision_container print_summary" ]
 }
