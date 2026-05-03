@@ -10,6 +10,20 @@ Default workflow:
 Context → Plan → Issue → Branch → Test → Change → Diagnose → Review → Merge
 ```
 
+# Agent skills
+
+### Issue tracker
+
+Issues and PRDs are tracked in this repository's GitHub Issues via `gh`. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Canonical triage labels map directly to default label names (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+This repo uses a single-context domain docs layout (root `CONTEXT.md` + `docs/adr/`). See `docs/agents/domain.md`.
+
 ## Agent Roles
 
 ### Claude
