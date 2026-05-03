@@ -128,3 +128,38 @@ Write or update tests first when practical.
 Run available checks.
 Summarize changed files, commands run, and remaining risks.
 ```
+
+## Token Budget Rules
+
+Agents must minimize token usage.
+
+Guidelines:
+
+- Never load the entire repo
+- Only use:
+  - CONTEXT.md
+  - AGENTS.md
+  - the issue
+  - changed files
+  - test output
+  - git diff
+
+- Avoid:
+  - re-reading unchanged files
+  - pasting large logs unless necessary
+  - repeating context already provided
+
+Approximation:
+
+- 1 file (200–300 lines) ≈ 1k–2k tokens
+- Full repo scan = high cost (avoid)
+
+Claude should be used only for:
+- planning
+- architecture
+- final review
+
+Codex should handle:
+- implementation
+- debugging
+- test loops
