@@ -13,7 +13,7 @@ No backend. No server. Everything runs in the browser via JavaScript.
 - **Repo:** `github.com/FugginOld/code-projects/styleforge`
 - **Live URL:** `fugginold.github.io/styleforge`
 - **Host:** GitHub Pages — served from the `main` branch `/docs` folder or repo root
-- **Base path:** All internal asset links and API calls must be relative or root-relative (`/styleforge/...`) to work correctly under the `/styleforge` subpath
+- **Base path:** All internal asset links and API calls must be relative or root-relative (`/code-projects/styleforge/...`) to work correctly under the `/code-projects/styleforge` subpath
 - **Constraints:** Static files only — no Node server, no Python, no Flask
 - **API calls:** Direct from browser to Anthropic API (`claude-sonnet-4-20250514`)
 - **API key:** Stored client-side (acceptable for personal use)
