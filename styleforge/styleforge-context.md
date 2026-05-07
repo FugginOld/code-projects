@@ -10,7 +10,7 @@ No backend. No server. Everything runs in the browser via JavaScript.
 
 ## Deployment Target
 
-- **Repo:** `github.com/FugginOld/styleforge`
+- **Repo:** `github.com/FugginOld/code-projects/styleforge`
 - **Live URL:** `fugginold.github.io/styleforge`
 - **Host:** GitHub Pages — served from the `main` branch `/docs` folder or repo root
 - **Base path:** All internal asset links and API calls must be relative or root-relative (`/styleforge/...`) to work correctly under the `/styleforge` subpath
@@ -77,7 +77,7 @@ All three ingest modules normalize their source into this shared schema so Claud
 ### File Structure
 
 ```
-FugginOld/styleforge/           # GitHub repo root
+FugginOld/code-projects/styleforge/           # GitHub repo root
 ├── index.html                  # Single-page app shell
 ├── style.css                   # App UI styles
 ├── app.js                      # Main application logic
@@ -340,7 +340,7 @@ steps:
 
 ### File additions to repo structure
 ```
-FugginOld/styleforge/
+FugginOld/code-projects/styleforge/
 ├── .github/
 │   └── workflows/
 │       ├── ci.yml
