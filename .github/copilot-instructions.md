@@ -81,3 +81,102 @@ If search returns 0 results, proceed as a fresh session.
 | `ctx purge` | Call `ctx_purge` MCP tool with confirm: true. Warns before wiping knowledge base. |
 
 After /clear or /compact: knowledge base and session stats preserved. Use `ctx purge` to start fresh.
+
+---
+
+# Global AI Workflow Rules
+
+## Workflow Priority
+
+1. Repository-local instructions override global instructions.
+2. context-mode routing rules are mandatory.
+3. Use token-efficient workflows.
+4. Follow CI AI workflow discipline.
+5. Prefer Matt Pocock-style issue/TDD workflow.
+
+---
+
+# Required Development Workflow
+
+For non-trivial changes:
+
+1. Inspect repository instructions.
+2. Diagnose before implementing.
+3. Search before opening files.
+4. Use context-mode tools for:
+   - scans
+   - diagnostics
+   - grep
+   - test output
+   - architecture review
+5. Break large work into smaller scoped tasks/issues.
+6. Prefer TDD:
+   - reproduce
+   - failing test
+   - minimal fix
+   - verify
+7. Run targeted checks first.
+8. Run broader validation if shared behavior changes.
+9. Summarize:
+   - changed files
+   - tests run
+   - remaining risks
+   - next recommended actions
+
+---
+
+# Token Efficiency Rules
+
+Avoid:
+
+- full logs
+- large pasted outputs
+- unnecessary file reads
+- repeated context
+- broad recursive scans without filtering
+
+Prefer:
+
+- summaries
+- targeted reads
+- concise diffs
+- line references
+- actionable findings
+
+---
+
+# File Reading Rules
+
+Before opening large files:
+
+1. Search/index first
+2. Identify relevant sections
+3. Read only necessary portions
+4. Summarize before expanding context further
+
+---
+
+# Architecture Workflow
+
+For unfamiliar repos:
+
+1. identify entrypoints
+2. identify build/test system
+3. identify dependency structure
+4. identify CI/CD flow
+5. identify shared libraries/modules
+6. identify existing patterns before creating new ones
+
+---
+
+# Preferred Final Response Format
+
+Use concise structured summaries:
+
+- objective
+- files changed
+- checks run
+- risks
+- next steps
+
+Avoid unnecessary prose.
